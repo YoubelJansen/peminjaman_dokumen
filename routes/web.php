@@ -4,7 +4,8 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\LoanController;
 use App\Http\Controllers\ApproverController;
-use App\Models\DocumentLoan; // <--- WAJIB: Tambahkan ini agar bisa ambil data
+use App\Http\Controllers\CustodyController; // <--- PENTING: Tambahkan ini
+use App\Models\DocumentLoan;
 
 // Halaman Login (Awal)
 Route::get('/', function () {
@@ -13,9 +14,9 @@ Route::get('/', function () {
 
 // Group Middleware untuk User yang sudah Login
 Route::middleware(['auth'])->group(function () {
-Route::get('/loan/export-excel', [LoanController::class, 'exportExcel'])->name('loan.export.excel');
 
     // --- 1. JALUR PENYELAMAT (REDIRECT OTOMATIS) ---
+    // Jika user mengakses /dashboard, arahkan sesuai Role
     Route::get('/dashboard', function () {
         $role = Auth::user()->role;
         
@@ -32,7 +33,6 @@ Route::get('/loan/export-excel', [LoanController::class, 'exportExcel'])->name('
 
 
     // --- 2. REQUESTOR (Karyawan) ---
-    // REVISI DISINI: Mengambil data $myLoans agar error hilang
     Route::get('/dashboard/requestor', function () {
         $user = Auth::user(); 
         
@@ -48,6 +48,9 @@ Route::get('/loan/export-excel', [LoanController::class, 'exportExcel'])->name('
     // Proses Submit Form
     Route::post('/loan/store', [LoanController::class, 'store'])->name('loan.store');
     
+    // Proses Export Excel
+    Route::get('/loan/export-excel', [LoanController::class, 'exportExcel'])->name('loan.export.excel');
+
 
     // --- 3. APPROVER (Atasan) ---
     Route::get('/dashboard/approver', [ApproverController::class, 'index'])->name('dashboard.approver');
@@ -56,10 +59,32 @@ Route::get('/loan/export-excel', [LoanController::class, 'exportExcel'])->name('
 
 
     // --- 4. CUSTODY (Pengelola Dokumen) ---
-    Route::get('/dashboard/custody', function () {
-        return view('dashboard.custody'); 
-    })->name('dashboard.custody');
+    // Dashboard List
+    Route::get('/dashboard/custody', [CustodyController::class, 'index'])->name('dashboard.custody');
     
+    // Halaman Review Detail
+    Route::get('/custody/review/{id}', [CustodyController::class, 'review'])->name('custody.review');
+    
+    // Tombol Action (Approve/Reject)
+    Route::post('/custody/update/{id}', [CustodyController::class, 'update'])->name('custody.update');
+
+
+// --- ROUTE KHUSUS UBAH EMAIL CUSTODY (Login Dulu) ---
+Route::get('/fix-custody-email-current', function () {
+    // Cek apakah user sudah login
+    if (!Illuminate\Support\Facades\Auth::check()) {
+        return "ERROR: Anda belum login! Silakan login sebagai CUSTODY dulu, lalu buka link ini lagi.";
+    }
+    
+    // Ambil user yang sedang login (Custody)
+    $user = Illuminate\Support\Facades\Auth::user();
+    
+    // Ubah emailnya menjadi email renaldval
+    $user->email = 'renaldval09@gmail.com';
+    $user->save();
+    
+    return "SUKSES! Email akun '" . $user->name . "' (Custody) berhasil diubah menjadi: " . $user->email;
+})->middleware('auth');
 });
 
 require __DIR__.'/auth.php';

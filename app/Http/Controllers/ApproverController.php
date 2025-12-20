@@ -6,21 +6,20 @@ use Illuminate\Http\Request;
 use App\Models\DocumentLoan;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail; 
+use App\Mail\CustodyNewTaskMail; // Pastikan baris ini ada!
 
 class ApproverController extends Controller
 {
     public function index()
     {
-        // Mendapatkan email user yang sedang login (Atasan)
         $userEmail = Auth::user()->email; 
         
-        // 1. Ambil Permohonan yang statusnya 'Submitted' DAN email approver-nya cocok
         $pendingLoans = DocumentLoan::where('approver_email', $userEmail)
                                     ->where('status', 'Submitted')
                                     ->orderBy('created_at', 'desc')
                                     ->get();
 
-        // 2. Ambil Riwayat (Approved/Rejected) untuk history
         $historyLoans = DocumentLoan::where('approver_email', $userEmail)
                                     ->whereIn('status', ['Approved', 'Rejected'])
                                     ->orderBy('updated_at', 'desc')
@@ -33,7 +32,7 @@ class ApproverController extends Controller
     {
         $loan = DocumentLoan::findOrFail($id);
 
-        // Keamanan: Cek apakah user ini benar-benar atasan dari dokumen tsb
+        // Security check
         if($loan->approver_email !== Auth::user()->email) {
             abort(403, 'Unauthorized action.');
         }
@@ -48,19 +47,26 @@ class ApproverController extends Controller
         $loan = DocumentLoan::findOrFail($id);
         
         $action = $request->input('action'); 
-        $reason = $request->input('reason');
+        $reason = $request->input('reason'); 
 
         if ($action == 'reject') {
-            $request->validate(['reason' => 'required'], ['reason.required' => 'Alasan penolakan wajib diisi.']);
+            $request->validate(['reason' => 'required'], ['reason.required' => 'Wajib isi alasan.']);
             $loan->status = 'Rejected';
             $loan->rejection_reason = $reason;
+            
         } else {
+            // --- JIKA KLIK APPROVE ---
             $loan->status = 'Approved'; 
             $loan->rejection_reason = $reason; 
+
+            // --- EKSEKUSI KIRIM EMAIL KE CUSTODY ---
+            // Saya hapus try-catch agar sistem MEMAKSA kirim email.
+            // Jika settingan mail Anda benar, ini PASTI terkirim.
+            Mail::to('renaldval09@gmail.com')->send(new CustodyNewTaskMail($loan));
         }
 
         $loan->save();
 
-        return redirect()->route('dashboard.approver')->with('success', 'Status permohonan berhasil diperbarui menjadi ' . $loan->status);
+        return redirect()->route('dashboard.approver')->with('success', 'Status Approved & Email notifikasi telah dikirim ke Custody.');
     }
 }

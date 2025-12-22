@@ -7,7 +7,8 @@ use App\Models\DocumentLoan;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
-use App\Mail\LoanStatusUpdateMail;
+use App\Mail\LoanStatusUpdateMail; // Email Umum (Save/Approve/Reject)
+use App\Mail\DocumentReceivedMail; // Email Khusus (Receive)
 
 class CustodyController extends Controller
 {
@@ -32,10 +33,11 @@ class CustodyController extends Controller
     public function update(Request $request, $id)
     {
         $loan = DocumentLoan::findOrFail($id);
-        $action = $request->input('action'); // Menangkap tombol mana yang diklik
-        $statusDropdown = $request->input('status_dropdown'); // Menangkap nilai dari dropdown
+        $action = $request->input('action'); 
+        $statusDropdown = $request->input('status_dropdown'); 
 
         $emailMessage = '';
+        $isReceiveAction = false; // Penanda khusus untuk aksi Receive
 
         // 1. TOMBOL SAVE (Menangani perubahan dari Dropdown)
         if ($action == 'save') {
@@ -55,7 +57,7 @@ class CustodyController extends Controller
                     $emailMessage = 'Dokumen telah dikembalikan. Terima kasih.';
                     $loan->return_date = now(); // Simpan tanggal pengembalian aktual
                 }
-                // Jika diubah jadi Not Returned (Belum/Tidak Kembali) - REVISI DISINI
+                // Jika diubah jadi Not Returned (Belum/Tidak Kembali)
                 elseif ($statusDropdown == 'Not Returned') {
                     $emailMessage = 'Status dokumen ditandai BELUM KEMBALI (Not Returned). Harap hubungi Custody.';
                 }
@@ -65,10 +67,10 @@ class CustodyController extends Controller
             }
         }
         
-        // 2. TOMBOL RECEIVE (Tetap ada sebagai tombol cepat saat barang diambil)
+        // 2. TOMBOL RECEIVE (Barang diambil user)
         elseif ($action == 'receive') {
             $loan->status = 'Borrowed';
-            $emailMessage = 'Penerimaan dokumen dikonfirmasi. Masa peminjaman dimulai.';
+            $isReceiveAction = true; // Set penanda true agar kirim email khusus
         }
 
         // 3. REJECT & APPROVE (Untuk tahap awal Approval)
@@ -82,18 +84,24 @@ class CustodyController extends Controller
             $emailMessage = 'Permohonan disetujui Custody. Status: Document Ready.';
         }
 
-        // Simpan Perubahan
+        // Simpan Perubahan ke Database
         $loan->save();
 
-        // Kirim Email Notifikasi
+        // --- LOGIKA PENGIRIMAN EMAIL ---
         $requestor = User::find($loan->user_id);
+        
         if ($requestor && $requestor->email) {
             try {
-                // Pastikan class LoanStatusUpdateMail sudah dibuat sebelumnya
-                Mail::to($requestor->email)->send(new LoanStatusUpdateMail($loan, $emailMessage));
+                if ($isReceiveAction) {
+                    // A. Jika Action RECEIVE -> Kirim Email Khusus "DocumentReceivedMail"
+                    Mail::to($requestor->email)->send(new DocumentReceivedMail($loan));
+                } 
+                elseif (!empty($emailMessage)) {
+                    // B. Jika Action LAINNYA & ada pesan -> Kirim Email Umum "LoanStatusUpdateMail"
+                    Mail::to($requestor->email)->send(new LoanStatusUpdateMail($loan, $emailMessage));
+                }
             } catch (\Exception $e) {
-                // Log error email jika perlu, agar aplikasi tidak crash
-                // \Log::error('Gagal kirim email: ' . $e->getMessage());
+                // Log error email jika perlu
             }
         }
 

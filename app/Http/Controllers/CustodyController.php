@@ -7,14 +7,15 @@ use App\Models\DocumentLoan;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
-use App\Mail\LoanStatusUpdateMail; // Email Umum (Save/Approve/Reject)
-use App\Mail\DocumentReceivedMail; // Email Khusus (Receive)
+use App\Mail\DocumentReceivedMail;   // Email Khusus saat Barang Diterima
+use App\Mail\LoanStatusUpdateMail;   // Email Umum (Ready, Returned, Not Returned, Reject)
 
 class CustodyController extends Controller
 {
     public function index()
     {
-        $loans = DocumentLoan::whereIn('status', ['Approved', 'Document Ready', 'Borrowed', 'Returned', 'Not Returned'])
+        // Menampilkan list berdasarkan status yang relevan bagi Custody
+        $loans = DocumentLoan::whereIn('status', ['Approved', 'Document Ready', 'Borrowed', 'Returned', 'Not Returned', 'Booked'])
                             ->orderBy('updated_at', 'desc')
                             ->get();
 
@@ -33,33 +34,41 @@ class CustodyController extends Controller
     public function update(Request $request, $id)
     {
         $loan = DocumentLoan::findOrFail($id);
+        $requestor = User::find($loan->user_id); // Ambil data peminjam untuk kirim email
+
         $action = $request->input('action'); 
         $statusDropdown = $request->input('status_dropdown'); 
 
-        $emailMessage = '';
-        $isReceiveAction = false; // Penanda khusus untuk aksi Receive
+        // Variabel untuk Email
+        $emailMessage = ''; 
+        $emailSubject = '';
+        $sendGeneralEmail = false;
+        $sendReceiveEmail = false;
 
-        // 1. TOMBOL SAVE (Menangani perubahan dari Dropdown)
+        // --- 1. LOGIKA TOMBOL SAVE (Menangani Dropdown) ---
         if ($action == 'save') {
-            // Cek apakah status di dropdown berbeda dengan database
             if ($statusDropdown && $statusDropdown != $loan->status) {
                 
                 $loan->status = $statusDropdown;
                 
-                // --- LOGIKA STATUS DROPDOWN ---
-                
-                // Jika diubah jadi Document Ready
+                // A. Jika Document Ready
                 if ($statusDropdown == 'Document Ready') {
-                    $emailMessage = 'Dokumen fisik telah disiapkan. Silakan datang ke ruangan Custody.';
+                    $emailSubject = 'Dokumen Siap Diambil - LendCore';
+                    $emailMessage = 'Dokumen fisik telah disiapkan oleh tim Custody. Silakan datang ke ruangan untuk pengambilan.';
+                    $sendGeneralEmail = true;
                 } 
-                // Jika diubah jadi Returned (Dikembalikan)
+                // B. Jika Returned (Dikembalikan)
                 elseif ($statusDropdown == 'Returned') {
-                    $emailMessage = 'Dokumen telah dikembalikan. Terima kasih.';
-                    $loan->return_date = now(); // Simpan tanggal pengembalian aktual
+                    $loan->return_date = now(); // Catat tanggal kembali aktual
+                    $emailSubject = 'Pengembalian Berhasil - LendCore';
+                    $emailMessage = 'Terima kasih, dokumen fisik telah kami terima kembali. Status peminjaman selesai.';
+                    $sendGeneralEmail = true;
                 }
-                // Jika diubah jadi Not Returned (Belum/Tidak Kembali)
+                // C. Jika Not Returned (Belum Kembali/Telat)
                 elseif ($statusDropdown == 'Not Returned') {
-                    $emailMessage = 'Status dokumen ditandai BELUM KEMBALI (Not Returned). Harap hubungi Custody.';
+                    $emailSubject = 'PERINGATAN: Dokumen Belum Kembali - LendCore';
+                    $emailMessage = 'Status dokumen Anda ditandai BELUM KEMBALI. Harap segera mengembalikan dokumen atau hubungi Custody.';
+                    $sendGeneralEmail = true;
                 }
 
             } else {
@@ -67,44 +76,51 @@ class CustodyController extends Controller
             }
         }
         
-        // 2. TOMBOL RECEIVE (Barang diambil user)
+        // --- 2. LOGIKA TOMBOL RECEIVE (Barang Diambil Peminjam) ---
         elseif ($action == 'receive') {
             $loan->status = 'Borrowed';
-            $isReceiveAction = true; // Set penanda true agar kirim email khusus
+            $sendReceiveEmail = true; // Pakai email khusus DocumentReceivedMail
         }
 
-        // 3. REJECT & APPROVE (Untuk tahap awal Approval)
+        // --- 3. LOGIKA TOMBOL REJECT ---
         elseif ($action == 'reject') {
             $loan->status = 'Rejected';
             $loan->rejection_reason = $request->input('note');
-            $emailMessage = 'Permohonan ditolak oleh Custody. Cek catatan untuk detailnya.';
+            
+            $emailSubject = 'Permohonan Ditolak - LendCore';
+            $emailMessage = 'Mohon maaf, permohonan peminjaman dokumen Anda ditolak. Alasan: ' . $loan->rejection_reason;
+            $sendGeneralEmail = true;
         }
+
+        // --- 4. LOGIKA TOMBOL DOCUMENT READY (Tombol Approve Coklat) ---
         elseif ($action == 'approve') {
             $loan->status = 'Document Ready';
-            $emailMessage = 'Permohonan disetujui Custody. Status: Document Ready.';
+            
+            $emailSubject = 'Dokumen Siap Diambil - LendCore';
+            $emailMessage = 'Permohonan Anda telah diproses. Dokumen fisik siap untuk diambil di ruang Custody.';
+            $sendGeneralEmail = true;
         }
 
         // Simpan Perubahan ke Database
         $loan->save();
 
-        // --- LOGIKA PENGIRIMAN EMAIL ---
-        $requestor = User::find($loan->user_id);
-        
+        // --- EKSEKUSI PENGIRIMAN EMAIL ---
         if ($requestor && $requestor->email) {
             try {
-                if ($isReceiveAction) {
-                    // A. Jika Action RECEIVE -> Kirim Email Khusus "DocumentReceivedMail"
+                // Skenario 1: Email Khusus Receive (Borrowed)
+                if ($sendReceiveEmail) {
                     Mail::to($requestor->email)->send(new DocumentReceivedMail($loan));
                 } 
-                elseif (!empty($emailMessage)) {
-                    // B. Jika Action LAINNYA & ada pesan -> Kirim Email Umum "LoanStatusUpdateMail"
-                    Mail::to($requestor->email)->send(new LoanStatusUpdateMail($loan, $emailMessage));
+                // Skenario 2: Email Umum (Ready, Returned, Not Returned, Reject)
+                elseif ($sendGeneralEmail) {
+                    Mail::to($requestor->email)->send(new LoanStatusUpdateMail($loan, $emailMessage, $emailSubject));
                 }
             } catch (\Exception $e) {
-                // Log error email jika perlu
+                // Log error jika email gagal, agar app tidak crash
+                // \Log::error("Gagal kirim email ke " . $requestor->email . ": " . $e->getMessage());
             }
         }
 
-        return redirect()->route('dashboard.custody')->with('success', 'Status berhasil diperbarui menjadi ' . $loan->status);
+        return redirect()->route('dashboard.custody')->with('success', 'Status updated to ' . $loan->status . '. Email notification sent.');
     }
 }

@@ -11,18 +11,20 @@ class LoanStatusUpdateMail extends Mailable
     use Queueable, SerializesModels;
 
     public $loan;
-    public $customMessage;
+    public $statusMessage;
+    public $customSubject;
 
-    public function __construct($loan, $customMessage = null)
+    // Kita terima data loan, pesan khusus, dan subject email
+    public function __construct($loan, $statusMessage, $customSubject)
     {
         $this->loan = $loan;
-        $this->customMessage = $customMessage;
+        $this->statusMessage = $statusMessage;
+        $this->customSubject = $customSubject;
     }
 
     public function build()
     {
-        // Subject email otomatis berubah sesuai status dokumen
-        return $this->subject('Update Status Peminjaman: ' . $this->loan->status)
+        return $this->subject($this->customSubject)
                     ->view('emails.loan_status_update');
     }
 }

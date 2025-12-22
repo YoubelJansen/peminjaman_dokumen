@@ -21,8 +21,6 @@ class LoginRequest extends FormRequest
 
     /**
      * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\Rule|array|string>
      */
     public function rules(): array
     {
@@ -34,18 +32,19 @@ class LoginRequest extends FormRequest
 
     /**
      * Attempt to authenticate the request's credentials.
-     *
-     * @throws \Illuminate\Validation\ValidationException
      */
     public function authenticate(): void
     {
         $this->ensureIsNotRateLimited();
 
+        // Coba Login
         if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
+            // --- POINT 11: NOTIFIKASI PASSWORD SALAH ---
+            // Ini akan otomatis mengembalikan user ke halaman login dengan pesan error merah
             throw ValidationException::withMessages([
-                'email' => trans('auth.failed'),
+                'email' => 'Login Gagal! Email atau Password yang Anda masukkan salah.',
             ]);
         }
 
@@ -54,8 +53,6 @@ class LoginRequest extends FormRequest
 
     /**
      * Ensure the login request is not rate limited.
-     *
-     * @throws \Illuminate\Validation\ValidationException
      */
     public function ensureIsNotRateLimited(): void
     {
@@ -80,6 +77,6 @@ class LoginRequest extends FormRequest
      */
     public function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->string('email')).'|'.$this->ip());
+        return Str::transliterate(Str::lower($this->input('email')).'|'.$this->ip());
     }
 }

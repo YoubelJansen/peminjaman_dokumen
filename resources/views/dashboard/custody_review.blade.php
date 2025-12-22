@@ -204,7 +204,7 @@
 
         <div class="save-container">
             <button type="submit" name="action" value="save" class="save-btn">
-                Save
+                Approve
             </button>
         </div>
     </form>

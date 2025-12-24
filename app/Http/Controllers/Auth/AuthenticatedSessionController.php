@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\LoginRequest; // Pastikan ini di-import
 use App\Providers\RouteServiceProvider;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,30 +23,31 @@ class AuthenticatedSessionController extends Controller
     /**
      * Handle an incoming authentication request.
      */
-    public function store(LoginRequest $request) // Pastikan use LoginRequest ada di atas
-        {
-            // 1. Validasi Login (Menjalankan logic di LoginRequest tadi)
-            $request->authenticate();
+    public function store(LoginRequest $request): RedirectResponse
+    {
+        // 1. Validasi & Login (Point 11: Notif Password Salah dihandle di sini)
+        // Fungsi ini memanggil logic 'authenticate()' yang ada di LoginRequest.php Anda
+        $request->authenticate(); 
 
-            // 2. Regenerate Session (Keamanan)
-            $request->session()->regenerate();
+        // 2. Regenerate Session (Keamanan)
+        $request->session()->regenerate();
 
-            // --- LOGIC REDIRECT SESUAI ROLE (Pindahkan kesini) ---
-            $role = Auth::user()->role; 
-            
-            if($role == 'admin') {
-                return redirect()->intended('dashboard/admin');
-            }
-            if($role == 'custody') {
-                return redirect()->intended('dashboard/custody');
-            }
-            if($role == 'approver') {
-                return redirect()->intended('dashboard/approver');
-            }
-
-            // Default redirect jika tidak punya role khusus
-            return redirect()->intended('/dashboard');
+        // 3. Redirect Sesuai Role (Point 17 & 18)
+        $role = Auth::user()->role;
+        
+        if ($role == 'admin') {
+            return redirect()->intended('dashboard/admin');
         }
+        if ($role == 'custody') {
+            return redirect()->intended('dashboard/custody');
+        }
+        if ($role == 'approver') {
+            return redirect()->intended('dashboard/approver');
+        }
+
+        // Default User (Requestor)
+        return redirect()->intended('/dashboard');
+    }
 
     /**
      * Destroy an authenticated session.

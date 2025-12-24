@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>LendCore - Document Lending Form</title>
 
-    <!-- Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
@@ -83,17 +82,37 @@
             display: none;
         }
 
-        /* SAVE BUTTON */
+        /* ACTION BUTTONS CONTAINER */
         .save-container {
-            display: flex; justify-content: flex-end; margin-top: 30px;
+            display: flex; 
+            justify-content: flex-end; 
+            margin-top: 30px;
+            gap: 20px; /* Jarak antar tombol */
         }
+
+        /* APPROVE BUTTON (Default Save) */
         .save-btn {
             width: 313px; height: 47px;
             background: #8F835A; color: white;
             border: none; border-radius: 10px;
             font-size: 18px; font-weight: 600;
             cursor: pointer;
+            transition: background 0.3s;
         }
+        .save-btn:hover { background: #7a6f4a; }
+
+        /* REJECT BUTTON (New) */
+        .reject-btn {
+            width: 313px; height: 47px;
+            background: #9B0101; /* Merah */
+            color: white;
+            border: none; border-radius: 10px;
+            font-size: 18px; font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+            /* Default display block, nanti diatur JS */
+        }
+        .reject-btn:hover { background: #7a0000; }
 
         /* NOTE */
         .note {
@@ -107,7 +126,6 @@
 
 <body>
 
-<!-- HEADER -->
 <div class="header">
     <div class="logo">LendCore</div>
     <div class="account">
@@ -116,13 +134,11 @@
     </div>
 </div>
 
-<!-- MAIN -->
 <div class="main">
 
     <div class="page-title">Document Lending Form</div>
     <div class="divider"></div>
 
-    <!-- FORM INFO -->
     <div class="form-grid">
         <div class="form-group">
             <label>Entity*</label>
@@ -150,7 +166,6 @@
         </div>
     </div>
 
-    <!-- TABLE -->
     <form action="{{ route('custody.update', $loan->id) }}" method="POST">
         @csrf
 
@@ -203,7 +218,16 @@
         </table>
 
         <div class="save-container">
-            <button type="submit" name="action" value="save" class="save-btn">
+            <button type="submit" 
+                    id="rejectBtn"
+                    name="action" 
+                    value="reject" 
+                    class="reject-btn" 
+                    onclick="return confirm('Apakah Anda yakin ingin menolak (REJECT) dokumen ini?')">
+                Reject
+            </button>
+
+            <button type="submit" name="action" value="approve" class="save-btn">
                 Approve
             </button>
         </div>
@@ -216,16 +240,24 @@
 
 </div>
 
-<!-- SCRIPT -->
 <script>
 function handleStatusChange() {
     const status = document.getElementById('statusSelect').value;
     const receiveBtn = document.getElementById('receiveBtn');
+    const rejectBtn = document.getElementById('rejectBtn'); // Ambil elemen tombol Reject
 
+    // LOGIKA 1: Tombol Receive (Hanya muncul jika Borrowed)
     if (status === 'Borrowed') {
         receiveBtn.style.display = 'block';
     } else {
         receiveBtn.style.display = 'none';
+    }
+
+    // LOGIKA 2: Tombol Reject (Hanya muncul jika Booked)
+    if (status === 'Booked') {
+        rejectBtn.style.display = 'block';
+    } else {
+        rejectBtn.style.display = 'none';
     }
 }
 
@@ -233,8 +265,11 @@ function receiveDocument() {
     alert('Dokumen fisik telah diterima kembali oleh Custody.');
     document.getElementById('statusSelect').value = 'Returned';
     document.getElementById('receiveBtn').style.display = 'none';
+    // Setelah diubah jadi Returned, panggil handleStatusChange lagi untuk update tombol Reject/Receive
+    handleStatusChange();
 }
 
+// Jalankan fungsi saat halaman pertama kali dimuat
 document.addEventListener('DOMContentLoaded', handleStatusChange);
 </script>
 

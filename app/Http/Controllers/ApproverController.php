@@ -7,7 +7,7 @@ use App\Models\DocumentLoan;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail; 
-use App\Mail\CustodyNewTaskMail; // Pastikan baris ini ada!
+use App\Mail\CustodyNewTaskMail; 
 
 class ApproverController extends Controller
 {
@@ -39,7 +39,12 @@ class ApproverController extends Controller
 
         $requestor = User::find($loan->user_id);
 
-        return view('dashboard.approver_review', compact('loan', 'requestor'));
+        // --- REVISI: MENAMBAHKAN VARIABEL APPROVER ---
+        // Kita ambil data user approver berdasarkan email yang tersimpan di loan
+        $approver = User::where('email', $loan->approver_email)->first();
+
+        // Jangan lupa masukkan 'approver' ke dalam compact
+        return view('dashboard.approver_review', compact('loan', 'requestor', 'approver'));
     }
 
     public function update(Request $request, $id)
@@ -60,13 +65,17 @@ class ApproverController extends Controller
             $loan->rejection_reason = $reason; 
 
             // --- EKSEKUSI KIRIM EMAIL KE CUSTODY ---
-            // Saya hapus try-catch agar sistem MEMAKSA kirim email.
-            // Jika settingan mail Anda benar, ini PASTI terkirim.
-            Mail::to('renaldval09@gmail.com')->send(new CustodyNewTaskMail($loan));
+            // Pastikan konfigurasi .env mailer sudah benar
+            try {
+                Mail::to('renaldval09@gmail.com')->send(new CustodyNewTaskMail($loan));
+            } catch (\Exception $e) {
+                // Opsional: Log error jika email gagal, tapi proses approve tetap jalan
+                // \Log::error('Gagal kirim email: ' . $e->getMessage());
+            }
         }
 
         $loan->save();
 
-        return redirect()->route('dashboard.approver')->with('success', 'Status Approved & Email notifikasi telah dikirim ke Custody.');
+        return redirect()->route('dashboard.approver')->with('success', 'Status berhasil diperbarui.');
     }
 }
